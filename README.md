@@ -17,11 +17,5 @@
 נסו ותהנו - או שלא, אבל א"כ אשמח לשמוע למה...
  
 
-||![9f7b12a1-72ae-436f-a783-f62d1295dd14-image.png](/assets/uploads/files/1765904352843-9f7b12a1-72ae-436f-a783-f62d1295dd14-image.png) 
-![99950044-3a1b-49ea-b4b6-73192a9fc7b9-image.png](/assets/uploads/files/1765904381475-99950044-3a1b-49ea-b4b6-73192a9fc7b9-image.png) 
-![15b6f73c-1e5a-401b-8693-9102279f8055-image.png](/assets/uploads/files/1765904412998-15b6f73c-1e5a-401b-8693-9102279f8055-image.png) 
-![9a9f5c4f-fcf5-4002-bf36-6be5e625f92f-image.png](/assets/uploads/files/1765904435018-9a9f5c4f-fcf5-4002-bf36-6be5e625f92f-image.png) 
-**מצב כהה:**
-![1c828b75-4511-434c-9b25-d35e33957ab2-image.png](/assets/uploads/files/1765904467263-1c828b75-4511-434c-9b25-d35e33957ab2-image.png)  ||
 
 קרדיט אייקון: ויקיפדיה
