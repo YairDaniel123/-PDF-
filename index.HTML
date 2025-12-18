@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>מציג PDF מתקדם</title>
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='app_icon.ico') }}">
+    <style>
+        :root {
+            --bg-color: #f8f9fa; --sidebar-bg: #ffffff;
+            --text-color: #212529; --accent-color: #0078d4;
+            --border-color: #e9ecef; --hover-bg: #f1f3f5;
+            --header-height: 55px; --sidebar-width: 320px;
+        }
+        body.dark-mode {
+            --bg-color: #202020; --sidebar-bg: #2b2b2b;
+            --text-color: #e0e0e0; --accent-color: #4cc2ff;
+            --border-color: #3e3e42; --hover-bg: #3c3c3c;
+        }
+        body.dark-mode iframe { filter: invert(0.9) hue-rotate(180deg); }
+        body { margin: 0; font-family: 'Segoe UI', sans-serif; background: var(--bg-color); color: var(--text-color); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+        
+        body.reading-mode header, body.reading-mode .sidebar { display: none !important; }
+        #exit-read-btn { display: none; position: fixed; top: 15px; left: 15px; z-index: 9999; background: rgba(0,0,0,0.6); color: white; border: none; padding: 10px 20px; border-radius: 25px; cursor: pointer; }
+        body.reading-mode #exit-read-btn { display: block; }
+
+        header { height: var(--header-height); background: var(--sidebar-bg); border-bottom: 1px solid var(--border-color); display: flex; align-items: center; padding: 0 20px; gap: 12px; flex-shrink: 0; }
+        .btn-icon { background: none; border: none; cursor: pointer; color: var(--text-color); padding: 8px; border-radius: 4px; }
+        .btn-icon:hover { background: var(--hover-bg); }
+        .btn-icon svg { width: 20px; height: 20px; fill: currentColor; }
+        .btn { padding: 6px 16px; border-radius: 4px; cursor: pointer; border: 1px solid var(--border-color); background: var(--bg-color); color: var(--text-color); }
+        .btn-primary { background: var(--accent-color); color: white; border: none; }
+        .btn-danger { background: #e81123; color: white; border: none; }
+
+        .container { display: flex; flex: 1; height: calc(100vh - var(--header-height)); overflow: hidden; }
+        .sidebar { width: var(--sidebar-width); background: var(--sidebar-bg); border-left: 1px solid var(--border-color); display: flex; flex-direction: column; transition: width 0.3s; }
+        .sidebar.collapsed { width: 0; border: none; }
+        
+        .tree-container { flex: 1; overflow-y: auto; padding: 10px; }
+        .tree-item { padding: 8px 10px; cursor: pointer; border-radius: 4px; margin-bottom: 2px; display: flex; align-items: center; justify-content: space-between; }
+        .tree-item:hover { background: var(--hover-bg); }
+        .folder-content { display: none; padding-right: 18px; border-right: 1px solid var(--border-color); }
+        
+        .viewer { flex: 1; background: var(--bg-color); display: flex; flex-direction: column; width: 100%; position: relative;}
+        iframe { width: 100%; height: 100%; border: none; background: white; }
+        
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); z-index: 2000; justify-content: center; align-items: center; }
+        .modal { background: var(--sidebar-bg); padding: 30px; border-radius: 8px; width: 500px; max-width: 90%; display: flex; flex-direction: column; gap: 15px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
+        
+        .fav-star svg { width: 18px; height: 18px; fill: none; stroke: #888; stroke-width: 2; }
+        .fav-star.is-fav svg { fill: #ffb900; stroke: #ffb900; }
+        
+        #paths-list li { display: flex; justify-content: space-between; align-items: center; padding: 5px; border-bottom: 1px solid var(--border-color); }
+        #paths-list li:last-child { border-bottom: none; }
+    </style>
+</head>
+<body>
+
+<button id="exit-read-btn" onclick="exitReadingMode()">✖ יציאה</button>
+
+<div id="loading-screen" class="modal-overlay" style="z-index:3000;">
+    <div class="modal" style="width:300px; align-items:center; text-align:center;">
+        <div style="width:40px; height:40px; border:4px solid var(--border-color); border-top-color:var(--accent-color); border-radius:50%; animation:spin 1s infinite linear; margin:0 auto 20px auto;"></div>
+        <h3>סורק ספרייה...</h3>
+        <div id="loading-text" style="color:gray; direction:ltr;">מאתחל</div>
+        <div id="file-counter" style="font-weight:bold; font-size:1.5rem;">0</div>
+    </div>
+</div>
+<style>@keyframes spin { 100% { transform: rotate(360deg); } }</style>
+
+<div id="settings-modal" class="modal-overlay">
+    <div class="modal">
+        <h2>הגדרות</h2>
+        <p>תיקיות לסריקה:</p>
+        <ul id="paths-list" style="height:150px; overflow-y:auto; border:1px solid var(--border-color); padding:5px; list-style:none; margin:0;"></ul>
+        <button class="btn" onclick="addFolder()">➕ הוסף תיקייה</button>
+        <label style="display:flex; gap:10px; margin-top:10px;">
+            <input type="checkbox" id="dark-mode-check" onchange="toggleDarkMode()"> מצב כהה
+        </label>
+        <label style="display:flex; gap:10px;">
+            <input type="checkbox" id="flat-view-check" onchange="toggleFlatView()"> תצוגה שטוחה (הצגת קבצים ללא תיקיות)
+        </label>
+        <div style="display:flex; justify-content:space-between;">
+            <button class="btn" onclick="closeSettings()">סגור</button>
+            <button class="btn btn-primary" onclick="saveSettings()">שמור וסרוק מחדש</button>
+        </div>
+    </div>
+</div>
+
+<header>
+    <button class="btn-icon" onclick="toggleSidebar()"><svg viewBox="0 0 24 24"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg></button>
+    <div style="font-weight:bold;">מציג PDF מתקדם</div>
+    <div style="flex:1"></div>
+    <input type="text" id="search" placeholder="חפש..." style="padding:6px; border-radius:4px; border:1px solid #ccc;">
+    <button class="btn-icon" onclick="forceRefresh()" title="רענן"><svg viewBox="0 0 24 24"><path d="M17.65 6.35A7.958 7.958 0 0012 4c-4.42 0-8 3.58-8 8s3.58 8 8 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0112 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg></button>
+    <button class="btn-icon" onclick="toggleFavoritesFilter()" id="fav-filter-btn" title="מועדפים"><svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" fill="none" stroke="currentColor" stroke-width="2"/></svg></button>
+    <button class="btn-icon" onclick="openSettings()"><svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg></button>
+    <button class="btn btn-primary" onclick="enterReadingMode()" style="margin-right:10px;">📖 מצב קריאה</button>
+    <button class="btn btn-danger" onclick="quitApp()">✕</button>
+</header>
+
+<div class="container">
+    <aside class="sidebar" id="sidebar">
+        <div id="tree-root" class="tree-container"></div>
+        <div id="flat-root" class="tree-container" style="display:none;"></div>
+        <div id="search-results" class="tree-container" style="display:none;"></div>
+    </aside>
+    <main class="viewer">
+        <div id="welcome-msg" style="text-align:center; color:#888; margin-top:20%;">
+            <h1>בחר ספר לקריאה</h1>
+            <button id="continue-btn" class="btn btn-primary" style="display:none;" onclick="continueReading()">המשך מאיפה שהפסקת</button>
+        </div>
+        <iframe id="pdf-frame" style="display:none;"></iframe>
+    </main>
+</div>
+
+<script>
+    let currentPaths=[], favorites=[], lastRead='', allFiles=[], treeData={}, isFlatView=false, showFavoritesOnly=false, isDarkMode=false;
+
+    window.onload = async () => {
+        // התחלת דפיקות לב כדי שהשרת לא ייסגר
+        setInterval(() => fetch('/heartbeat').catch(()=>{}), 1000);
+        
+        // טעינת הגדרות ראשוניות
+        const init = await (await fetch('/get_init_data')).json();
+        currentPaths=init.paths; 
+        favorites=init.favorites; 
+        lastRead=init.last_read; 
+        isDarkMode=init.dark_mode;
+        
+        applyTheme();
+        if(lastRead) document.getElementById('continue-btn').style.display='inline-block';
+        
+        // התחלת סריקה או הצגת הגדרות
+        const scan = await (await fetch('/start_scan')).json();
+        if(scan.status==='empty_config') openSettings();
+        else if(scan.status==='ready') loadData();
+        else trackProgress();
+    };
+
+    function applyTheme() {
+        document.body.classList.toggle('dark-mode', isDarkMode);
+        document.getElementById('dark-mode-check').checked = isDarkMode;
+    }
+
+    async function saveSettings() {
+        // שמירת מצב כהה
+        await fetch('/save_preferences', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({dark_mode:isDarkMode}) });
+        
+        // שמירת נתיבים - שולח את הרשימה המעודכנת
+        await fetch('/update_paths', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({paths:currentPaths}) });
+        
+        closeSettings();
+        forceRefresh();
+    }
+
+    function toggleDarkMode() { isDarkMode = document.getElementById('dark-mode-check').checked; applyTheme(); }
+    function toggleFlatView() { isFlatView = document.getElementById('flat-view-check').checked; refreshView(); }
+
+    async function toggleFavorite(e, path) {
+        e.stopPropagation();
+        path = path.replace(/\\/g, '/');
+        favorites = favorites.includes(path) ? favorites.filter(p=>p!==path) : [...favorites, path];
+        document.querySelectorAll(`[data-path="${CSS.escape(path)}"]`).forEach(el => el.classList.toggle('is-fav'));
+        await fetch('/toggle_favorite', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({path}) });
+        if(showFavoritesOnly) refreshView();
+    }
+
+    function toggleFavoritesFilter() {
+        showFavoritesOnly = !showFavoritesOnly;
+        document.getElementById('fav-filter-btn').style.color = showFavoritesOnly ? '#ffb900' : 'var(--text-color)';
+        refreshView();
+    }
+
+    function refreshView() {
+        const tree=document.getElementById('tree-root'), flat=document.getElementById('flat-root');
+        
+        if(showFavoritesOnly) {
+            tree.style.display='none'; flat.style.display='block';
+            renderFlatList(allFiles.filter(f=>favorites.includes(f.p)), flat);
+        } else if(isFlatView) {
+            tree.style.display='none'; flat.style.display='block';
+            renderFlatList(allFiles, flat);
+        } else {
+            tree.style.display='block'; flat.style.display='none';
+            if(!tree.innerHTML) renderTree(treeData, tree);
+        }
+    }
+
+    function renderFlatList(files, container) {
+        container.innerHTML = files.slice(0,500).map(f => `
+            <div class="tree-item" onclick="openPdf('${f.p.replace(/'/g,"\\'")}')">
+                <div>📄 ${f.n} <small style="opacity:0.6">${f.f}</small></div>
+                ${getStarHTML(f.p)}
+            </div>
+        `).join('') + (files.length>500 ? '<div style="padding:10px;color:gray">...ועוד תוצאות</div>' : '');
+    }
+
+    function renderTree(node, container) {
+        if (!node.children) return;
+        container.innerHTML = '';
+        
+        node.children.forEach(child => {
+            const div = document.createElement('div');
+            
+            if (child.type === 'folder') {
+                div.innerHTML = `
+                    <div class="tree-item" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='block'?'none':'block'">
+                        <div>📁 ${child.name}</div>
+                    </div>
+                    <div class="folder-content"></div>
+                `;
+                renderTree(child, div.querySelector('.folder-content'));
+            } else {
+                div.innerHTML = `
+                    <div class="tree-item" onclick="openPdf('${child.path.replace(/'/g,"\\'")}')">
+                        <div>📄 ${child.name}</div>
+                        ${getStarHTML(child.path)}
+                    </div>
+                `;
+            }
+            container.appendChild(div);
+        });
+    }
+
+    function getStarHTML(path) {
+        path = path.replace(/'/g,"\\'");
+        const cls = favorites.includes(path.replace(/\\/g,'/')) ? 'is-fav' : '';
+        return `<div class="fav-star ${cls}" data-path="${path}" onclick="toggleFavorite(event, '${path}')">
+            <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        </div>`;
+    }
+
+    function openPdf(path) {
+        fetch('/set_last_read', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({path}) });
+        document.getElementById('welcome-msg').style.display='none';
+        const frame = document.getElementById('pdf-frame');
+        frame.style.display='block';
+        frame.src = `/open_pdf?path=${encodeURIComponent(path)}`;
+    }
+
+    function continueReading() { if(lastRead) openPdf(lastRead); }
+
+    let searchTimeout;
+    document.getElementById('search').addEventListener('input', e => {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => {
+            const val = e.target.value.toLowerCase(), res = document.getElementById('search-results');
+            if(val.length<2) { res.style.display='none'; refreshView(); return; }
+            document.getElementById('tree-root').style.display='none';
+            document.getElementById('flat-root').style.display='none';
+            res.style.display='block';
+            renderFlatList(allFiles.filter(f=>f.n.toLowerCase().includes(val)), res);
+        }, 300);
+    });
+
+    function quitApp() { 
+        fetch('/shutdown').catch(()=>{});
+        setTimeout(()=>window.close(), 100); 
+        document.body.innerHTML='<div style="display:flex;height:100vh;justify-content:center;align-items:center;background:#333;color:white"><h1>התוכנה נסגרה</h1></div>'; 
+    }
+    
+    function enterReadingMode() { document.body.classList.add('reading-mode'); document.documentElement.requestFullscreen().catch(()=>{}); }
+    function exitReadingMode() { if(document.fullscreenElement) document.exitFullscreen(); document.body.classList.remove('reading-mode'); }
+    function toggleSidebar() { document.getElementById('sidebar').classList.toggle('collapsed'); }
+    
+    // === ניהול הגדרות ===
+    async function openSettings() {
+        const d = await (await fetch('/get_init_data')).json();
+        currentPaths = d.paths;
+        renderPathsList();
+        document.getElementById('settings-modal').style.display='flex';
+    }
+
+    function renderPathsList() {
+        document.getElementById('paths-list').innerHTML = currentPaths.map((p,i)=>`
+            <li>
+                <span dir="ltr">${p}</span>
+                <span onclick="removePath(${i})" style="color:red;cursor:pointer;font-weight:bold;padding:0 5px;">✖</span>
+            </li>
+        `).join('');
+    }
+
+    function closeSettings() { document.getElementById('settings-modal').style.display='none'; }
+    
+    async function addFolder() { 
+        const d = await (await fetch('/browse_folder')).json();
+        if(d.status==='ok' && !currentPaths.includes(d.path)) { 
+            currentPaths.push(d.path); 
+            renderPathsList(); // מעדכן רק את התצוגה, השמירה תהיה בלחיצה על "שמור"
+        }
+    }
+    
+    function removePath(i) { 
+        currentPaths.splice(i,1); 
+        renderPathsList(); 
+    }
+    
+    function forceRefresh() { 
+        document.getElementById('tree-root').innerHTML=''; 
+        fetch('/start_scan?force=true').then(trackProgress); 
+    }
+    
+    function trackProgress() {
+        document.getElementById('loading-screen').style.display='flex';
+        const intv = setInterval(async () => {
+            try {
+                const d = await (await fetch('/progress')).json();
+                document.getElementById('file-counter').innerText = d.total_files;
+                document.getElementById('loading-text').innerText = d.current_file;
+                if(d.done) { clearInterval(intv); loadData(); }
+            } catch { clearInterval(intv); }
+        }, 500);
+    }
+    
+    async function loadData() {
+        const d = await (await fetch('/get_result')).json();
+        document.getElementById('loading-screen').style.display='none';
+        allFiles=d.flat; treeData=d.tree; refreshView();
+    }
+</script>
+</body>
+</html>
