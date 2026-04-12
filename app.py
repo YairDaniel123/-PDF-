@@ -405,18 +405,33 @@ def preview_page():
             return send_file(io.BytesIO(pdf_bytes), mimetype='application/pdf')
     except: return "Error", 500
 
-
 @app.route('/browse')
 def browse():
     try:
-        cmd = [sys.executable, '-c', "import tkinter as tk, sys; from tkinter import filedialog; root=tk.Tk(); root.withdraw(); root.attributes('-topmost', True); path=filedialog.askdirectory(); root.destroy(); sys.stdout.buffer.write(path.encode('utf-8'))"]
-        kwargs = {}
-        if os.name == 'nt': kwargs['creationflags'] = 0x08000000
-        path = subprocess.check_output(cmd, **kwargs).decode('utf-8').strip()
-        if path: return jsonify({'status': 'ok', 'path': path.replace('\\', '/')})
+        if getattr(sys, 'frozen', False):
+            import tkinter as tk
+            from tkinter import filedialog
+            result = {'path': ''}
+            def ask():
+                root = tk.Tk()
+                root.withdraw()
+                root.attributes('-topmost', True)
+                result['path'] = filedialog.askdirectory()
+                root.destroy()
+            t = threading.Thread(target=ask)
+            t.start()
+            t.join()
+            if result['path']:
+                return jsonify({'status': 'ok', 'path': result['path'].replace('\\', '/')})
+        else:
+            cmd = [sys.executable, '-c', "import tkinter as tk, sys; from tkinter import filedialog; root=tk.Tk(); root.withdraw(); root.attributes('-topmost', True); path=filedialog.askdirectory(); root.destroy(); sys.stdout.buffer.write(path.encode('utf-8'))"]
+            kwargs = {}
+            if os.name == 'nt': kwargs['creationflags'] = 0x08000000
+            path = subprocess.check_output(cmd, **kwargs).decode('utf-8').strip()
+            if path:
+                return jsonify({'status': 'ok', 'path': path.replace('\\', '/')})
     except: pass
     return jsonify({'status': 'cancel'})
-
 
 @app.route('/update_paths', methods=['POST'])
 def update_paths():
