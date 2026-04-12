@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>מציג PDF מתקדם</title>
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <style>
+        :root {
+            --bg-color: #ffffff; --sidebar-bg: #f8fafc; --panel-bg: #ffffff; --header-bg: rgba(255, 255, 255, 0.98);
+            --text-main: #0f172a; --text-muted: #64748b; --accent: #2563eb; --accent-hover: #1d4ed8;
+            --border: #e2e8f0; --hover-bg: #f1f5f9; --viewer-bg: #e2e8f0; --input-bg: #ffffff; --header-height: 60px;
+        }
+
+        body.theme-1 { 
+            --bg-color: #1e293b; --sidebar-bg: #0f172a; --panel-bg: #1e293b; --header-bg: #0f172a;
+            --text-main: #f1f5f9; --text-muted: #94a3b8; --accent: #60a5fa; --accent-hover: #3b82f6;
+            --border: #334155; --hover-bg: #334155; --viewer-bg: #000000; --input-bg: #0f172a;
+        }
+
+        body.theme-2 { 
+            --bg-color: #000000; --sidebar-bg: #000000; --panel-bg: #000000; --header-bg: #000000;
+            --text-main: #ffffff; --text-muted: #d4d4d4; --accent: #ffffff; --accent-hover: #cccccc;
+            --border: #444444; --hover-bg: #222222; --viewer-bg: #000000; --input-bg: #111111;
+        }
+
+        body { margin: 0; font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-color); color: var(--text-main); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+        
+        iframe { width: 100%; height: 100%; border: none; display: block; transition: filter 0.3s; touch-action: auto; }
+        body.theme-2 iframe { filter: invert(1) hue-rotate(180deg); }
+
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        body.theme-1 ::-webkit-scrollbar-thumb { background: #475569; }
+
+        header { height: var(--header-height); background: var(--header-bg); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 20px; gap: 15px; }
+
+        .btn { background: var(--panel-bg); border: 1px solid var(--border); color: var(--text-main); padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 0.9rem; display: flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap; user-select: none; transition: 0.2s; }
+        .btn:hover { background: var(--hover-bg); border-color: var(--accent); color: var(--accent); }
+        .btn-primary { background: var(--accent); color: white; border-color: var(--accent); }
+        .btn-primary:hover { background: var(--accent-hover); color: white; }
+        
+        body.theme-1 .btn { background: #334155; border-color: #475569; color: #f1f5f9; }
+        body.theme-1 .btn:hover { background: #475569; }
+
+        body.theme-2 .btn { background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.2); color: #ffffff; }
+        body.theme-2 .btn:hover { background: rgba(50,50,50,0.8); border-color: #ffffff; color: #ffffff; }
+        body.theme-2 .btn-primary { background: rgba(50,50,50,0.8); border: 1px solid rgba(255,255,255,0.3); color: #ffffff; font-weight: bold; }
+        body.theme-2 .btn-primary:hover { background: rgba(80,80,80,0.9); border-color: #ffffff; }
+
+        .btn-icon { background: transparent; border: none; color: var(--text-muted); padding: 8px; border-radius: 50%; cursor: pointer; display: flex; }
+        .btn-icon:hover { background: var(--hover-bg); color: var(--text-main); }
+        .btn-icon svg { width: 22px; height: 22px; fill: currentColor; }
+
+        input[type="text"] { background: var(--input-bg); border: 1px solid var(--border); color: var(--text-main); padding: 8px 12px; border-radius: 20px; outline: none; width: 100%; }
+        input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(37,99,235,0.1); }
+
+        .container { display: flex; flex: 1; overflow: hidden; }
+        .sidebar { width: 300px; background: var(--sidebar-bg); border-left: 1px solid var(--border); display: flex; flex-direction: column; transition: width 0.3s; }
+        .sidebar.collapsed { width: 0; border: none; overflow: hidden; }
+        
+        .viewer { flex: 1; background: var(--viewer-bg); display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }
+        #welcome { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; height: 100%; text-align: center; color: var(--text-muted); }
+        
+        body.reading-mode .viewer { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 5000; background: var(--bg-color); }
+        body.reading-mode header, body.reading-mode .sidebar { display: none !important; }
+        
+        .read-overlay-btn { position: fixed; z-index: 6000; background: rgba(0, 0, 0, 0.7); color: white; border: none; padding: 10px 20px; border-radius: 30px; font-weight: bold; cursor: pointer; display: none; box-shadow: 0 4px 15px rgba(0,0,0,0.5); backdrop-filter: blur(4px); bottom: 30px; left: 30px; border: 1px solid rgba(255,255,255,0.2); }
+        .read-overlay-btn:hover { background: #dc2626; }
+        body.reading-mode .read-overlay-btn { display: block; }
+		
+        .tree-container { flex: 1; overflow-y: auto; padding: 10px; }
+        .tree-item { padding: 6px 8px; cursor: pointer; border-radius: 4px; display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--text-main); font-size: 0.9rem; margin-bottom: 2px; }
+        .tree-item:hover { background: var(--hover-bg); }
+        .folder-content { display: none; padding-right: 20px; }
+        .tree-item-content { display: flex; align-items: center; gap: 8px; flex: 1; overflow: hidden; }
+        .tree-file-info { display: flex; flex-direction: column; overflow: hidden; }
+        .tree-sub-path { font-size: 0.75rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .tree-fav-icon { color: var(--border); cursor: pointer; }
+        .tree-fav-icon:hover { color: #fbbf24; }
+        .tree-fav-icon.active { color: #fbbf24; fill: #fbbf24; }
+
+        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 2000; justify-content: center; align-items: center; backdrop-filter: blur(2px); }
+        .modal { background: var(--panel-bg); padding: 25px; border-radius: 12px; width: 90%; max-width: 800px; display: flex; flex-direction: column; gap: 15px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); border: 1px solid var(--border); max-height: 90vh; }
+        
+        #search-modal .modal { height: 95vh; max-width: 1000px; padding: 12px 15px; gap: 8px; }
+
+        .modal-scroll-area { flex: 1; overflow-y: auto; padding-left: 10px; }
+        .modal-footer { display: flex; justify-content: flex-end; margin-top: auto; border-top: 1px solid var(--border); padding-top: 15px; }
+
+        .search-container { display: flex; gap: 8px; width: 100%; position: relative; }
+        .search-container input { padding: 8px 16px; font-size: 1.05rem; padding-left: 100px; }
+        .search-btn-absolute { position: absolute; left: 4px; top: 4px; bottom: 4px; padding: 0 20px; border-radius: 16px; font-weight: bold; font-size: 1rem;}
+
+        .results-area { flex: 1; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; padding: 10px; background: var(--hover-bg); display: flex; flex-direction: column; gap: 8px; }
+        .result-card { background: var(--panel-bg); border: 1px solid var(--border); padding: 10px 15px; border-radius: 8px; cursor: pointer; display: flex; flex-direction: column; gap: 4px; transition: border-color 0.2s;}
+        .result-card:hover { border-color: var(--accent); }
+        .result-card.expanded { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); cursor: default; }
+        
+        .snippet { color: var(--text-muted); font-size: 0.95rem; line-height: 1.6; padding: 8px; background: rgba(0,0,0,0.03); border-radius: 4px; margin-top: 5px; }
+        .folder-path { font-size: 0.8rem; color: var(--text-muted); display: flex; align-items: center; gap: 5px; margin-bottom: 2px;}
+        body.theme-1 .snippet, body.theme-2 .snippet { background: rgba(255,255,255,0.05); }
+        mark { background: #fef08a; color: black; padding: 0 4px; border-radius: 2px; font-weight: bold;}
+
+        .preview-box { height: 60vh; margin-top: 10px; background: white; border: 1px solid var(--border); border-radius: 8px; display: none; overflow: hidden; flex-direction: column; }
+        .result-card.expanded .preview-box { display: flex; }
+
+        .progress-bar { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; width: 100%; direction: rtl;}
+        .progress-val { height: 100%; background: var(--accent); width: 0%; transition: width 0.3s; }
+        
+        .stop-btn { color: #ef4444; border: 1px solid #ef4444; background: transparent; padding: 4px 12px; border-radius: 6px; font-size: 0.85rem; cursor: pointer; white-space: nowrap; transition: 0.2s;}
+        .stop-btn:hover { background: #fee2e2; }
+        body.theme-1 .stop-btn:hover, body.theme-2 .stop-btn:hover { background: rgba(239, 68, 68, 0.2); }
+
+        #book-filters { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; border-bottom: 1px solid var(--border); margin-bottom: 2px; white-space: nowrap; }
+        .book-tag { background: var(--panel-bg); border: 1px solid var(--border); padding: 4px 10px; border-radius: 20px; font-size: 0.85rem; cursor: pointer; color: var(--text-main); }
+        .book-tag:hover { background: var(--accent); color: white; border-color: var(--accent); }
+        .book-tag span { font-weight: bold; margin-right: 4px; }
+        
+        .welcome-resume-btn { margin-top: 20px; padding: 12px 24px; font-size: 1.1rem; border-radius: 30px; display: none; background: linear-gradient(135deg, #2563eb, #1d4ed8); border: none; color: white; gap: 10px; align-items: center; cursor: pointer;}
+        .welcome-resume-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(37, 99, 235, 0.4); }
+    </style>
+</head>
+<body>
+
+<button id="exit-read-btn" class="read-overlay-btn" onclick="toggleReadingMode(false)">יציאה ממסך מלא (ESC)</button>
+
+<div id="loading" class="modal-overlay" style="z-index: 3000;">
+    <div class="modal" style="width: 300px; height: auto; align-items: center; text-align: center;">
+        <div style="width: 40px; height: 40px; border: 4px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 1s infinite linear;"></div>
+        <h3 id="loading-text">טוען נתונים...</h3>
+    </div>
+</div>
+<style>@keyframes spin { 100% { transform: rotate(360deg); } }</style>
+
+<!-- מודל חיפוש מקוצר -->
+<div id="search-modal" class="modal-overlay">
+    <div class="modal">
+        <div style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 5px;">
+            <div style="display: flex; gap: 15px; align-items: baseline;">
+                <h2 style="margin: 0;">חיפוש בתוכן הקבצים</h2>
+                <span id="results-count" style="color: var(--accent); font-weight: bold; font-size: 1.1rem;"></span>
+            </div>
+            <button class="btn btn-primary" style="padding: 4px 16px;" onclick="toggleSearchModal(false)">סגור</button>
+        </div>
+        
+        <div>
+            <div class="search-container">
+                <input type="text" id="query" placeholder="הקלד מילה לחיפוש..." oninput="resetResults()" onkeydown="if(event.key==='Enter') doSearch()">
+                <button class="btn-primary search-btn-absolute" onclick="doSearch()">חפש</button>
+            </div>
+            <div style="font-size: 0.9rem; color: var(--accent); margin-top: 6px; font-weight: bold; text-align: center;">
+                לחיצה אחת לתצוגה מקדימה | לחיצה כפולה לפתיחת הספר המלא בעמוד זה
+            </div>
+        </div>
+
+        <div id="book-filters" style="display: none;"></div>
+
+        <div id="results" class="results-area"><div style="text-align: center; padding: 40px; opacity: 0.5;">התוצאות יופיעו כאן...</div></div>
+        
+        <!-- סרגל אינדוקס בתצורה הרצויה (שורה אחת) -->
+        <div id="idx-status" style="display: none; align-items: center; gap: 15px; background: var(--panel-bg); padding: 10px 15px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 5px;">
+            <div style="flex: 1;">
+                <div class="progress-bar"><div id="idx-bar" class="progress-val"></div></div>
+            </div>
+            <button class="stop-btn" onclick="stopIndexing()">עצור אינדוקס</button>
+            <div id="idx-msg" style="font-weight: bold; font-size: 0.95rem; text-align: right; width: 200px; max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">מאנדקס עכשיו...</div>        </div>
+    </div>
+</div>
+
+<!-- מודל אודות -->
+<div id="about-modal" class="modal-overlay" style="z-index: 2500;">
+    <div class="modal" style="width: 450px; height: auto;">
+        <h2 style="margin: 0; text-align: center;">אודות התוכנה</h2>
+        <div style="text-align: center; margin-bottom: 15px; font-size: 14px; color: var(--text-muted);">
+        התוכנה פותחה על ידי <strong>יאיר דניאל</strong> לשימוש אישי וחינמי
+        </div>
+        <div class="modal-scroll-area" style="padding: 0 10px;">
+            <p style="font-weight: bold; margin-bottom: 8px;">התוכנה כוללת:</p>
+            <ul style="padding-right: 20px; margin: 0; line-height: 1.6;">
+                <li>סריקה אוטומטית של תיקיות וקבצי PDF (כולל תתי־תיקיות)</li>
+                <li>חיפוש טקסט חופשי בתוך תוכן המסמכים</li>
+                <li>הדגשת תוצאות חיפוש בתוך ה - PDF</li>
+                <li>תצוגת עמוד בודד (תצוגה מקדימה) לפי תוצאת חיפוש</li>
+                <li>ניהול מועדפים והיסטוריית פתיחה</li>
+                <li>התוכנה אינה דורשת חיבור לאינטרנט</li>
+            </ul>
+            <p style="margin-top: 15px; line-height: 1.5;">התוכנה מיועדת לעבודה יעילה עם ספריות PDF גדולות, ומאפשרת גישה מהירה ומדויקת למידע – בלחיצת כפתור.</p>
+            
+            <div style="text-align: center; margin-top: 20px;">
+                <a href="https://github.com/YairDaniel123/-PDF-" target="_blank" style="color: var(--accent); text-decoration: none; font-weight: bold; font-size: 1.05rem; display: inline-block; padding: 10px; background: var(--hover-bg); border-radius: 8px;">🔗 עבור למאגר הגיטאב של התוכנה</a>
+            </div>
+
+            <div style="text-align: center; margin-top: 15px; font-weight: bold; font-size: 1rem;">גירסה 1.4</div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-primary" style="width: 100%;" onclick="document.getElementById('about-modal').style.display='none'">סגור</button>
+        </div>
+    </div>
+</div>
+
+<header>
+    <button class="btn-icon" onclick="toggleSidebar()"><svg viewBox="0 0 24 24"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg></button>
+    <div style="font-weight: 800; font-size: 1.3rem; color: var(--accent);">מציג PDF מתקדם</div>
+    <span id="stats" class="btn" style="font-size: 0.8rem; background: var(--hover-bg);">0 קבצים</span>
+    <div style="flex: 1;"></div>
+    
+    <button class="btn" onclick="toggleSearchModal(true)" style="border-radius: 20px; font-weight: 900; border: 2px solid var(--accent); color: var(--accent); padding: 8px 25px;">
+        חיפוש בתוכן הקבצים
+    </button>
+    
+    <input type="text" id="filter" placeholder="הזן שם ספר לחיפוש..." style="width: 250px;" oninput="renderTree()">
+    
+    <button class="btn-icon" onclick="showHistory()" title="היסטוריית קריאה"><svg viewBox="0 0 24 24"><path d="M13 3c-4.97 0-9 4.03-9 9H1l3.89 3.89.07.14L9 12H6c0-3.87 3.13-7 7-7s7 3.13 7 7-3.13 7-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42C8.27 19.99 10.51 21 13 21c4.97 0 9-4.03 9-9s-4.03-9-9-9zm-1 5v5l4.28 2.54.72-1.21-3.5-2.08V8H12z"/></svg></button>
+    <button class="btn-icon" onclick="showFavorites()" title="מועדפים"><svg viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg></button>
+    <button class="btn-icon" onclick="refreshLibrary()" title="רענן ספרייה"><svg viewBox="0 0 24 24"><path d="M17.65 6.35A7.958 7.958 0 0012 4c-4.42 0-8 3.58-8 8s3.58 8 8 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0112 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg></button>
+    <button class="btn-icon" onclick="toggleSettings(true)" title="הגדרות"><svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg></button>
+    <div style="width: 1px; height: 30px; background: var(--border); margin: 0 5px;"></div>
+    <button class="btn btn-primary" onclick="toggleReadingMode(true)" style="border-radius: 20px;">מסך מלא</button>
+</header>
+
+<div class="container">
+    <div id="sidebar" class="sidebar"><div id="tree" class="tree-container"></div></div>
+    <div class="viewer">
+        <div id="welcome">
+            <h1 style="margin-bottom: 5px;">בחר ספר לקריאה</h1>
+            <p style="margin-top: 0;">חפש ספרים בעץ או השתמש בכלי החיפוש בתוכן למעלה.</p>
+            <button id="resume-btn" class="btn btn-primary welcome-resume-btn" onclick="resumeReading()">המשך קריאה מאיפה שעצרת</button>
+        </div>
+        <iframe id="frame" style="display: none;"></iframe>
+    </div>
+</div>
+
+<div id="fav-modal" class="modal-overlay">
+    <div class="modal" style="width: 600px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h2 style="margin: 0;">מועדפים</h2>
+            <button class="btn btn-primary" style="padding: 4px 16px; font-size: 0.9rem;" onclick="document.getElementById('fav-modal').style.display='none'">סגור</button>
+        </div>
+        <div id="fav-list-content" class="results-area"></div>
+    </div>
+</div>
+
+<div id="history-modal" class="modal-overlay">
+    <div class="modal" style="width: 600px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h2 style="margin: 0;">היסטוריית קריאה</h2>
+            <button class="btn btn-primary" style="padding: 4px 16px; font-size: 0.9rem;" onclick="document.getElementById('history-modal').style.display='none'">סגור</button>
+        </div>
+        <div id="history-list-content" class="results-area"></div>
+    </div>
+</div>
+
+<div id="settings-modal" class="modal-overlay">
+    <div class="modal" style="width: 500px;">
+        <h2 style="margin: 0;">הגדרות ספרייה</h2>
+        <div class="modal-scroll-area">
+            <p style="font-size:0.9rem; color:var(--text-muted); margin-top:0;">בחר אילו תיקיות התוכנה תסרוק:</p>
+            <div style="border: 1px solid var(--border); border-radius: 8px; overflow-y: auto; max-height: 150px; margin-bottom: 10px; background: var(--input-bg);">
+                <ul id="paths" style="list-style: none; padding: 0; margin: 0;"></ul>
+            </div>
+            <button class="btn" style="width: 100%; margin-bottom: 20px;" onclick="addPath()">+ הוסף תיקייה למאגר</button>
+            
+            <div style="display: flex; flex-direction: column; gap: 15px;">
+                <div><label style="font-weight:bold;">ערכת נושא:</label>
+                    <div style="display: flex; gap: 10px; margin-top: 8px;">
+                        <button class="btn" onclick="setTheme(0)">בהירה</button>
+                        <button class="btn" onclick="setTheme(1)">כהה</button>
+                        <button class="btn" onclick="setTheme(2)" style="background: black; color: white;">מצב לילה (הפוך)</button>
+                    </div>
+                </div>
+                
+                <div style="border-top: 1px solid var(--border); padding-top: 15px; display:flex; flex-direction:column; gap:10px;">
+                     <button class="btn" style="justify-content: center;" onclick="document.getElementById('about-modal').style.display='flex'">ⓘ אודות התוכנה</button>
+                     <button class="btn" style="color: #ef4444; border-color: #ef4444; justify-content: center;" onclick="clearIndexes()">🗑️ מחיקת אינדקס חיפוש</button>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn" onclick="toggleSettings(false)">ביטול</button>
+            <button class="btn btn-primary" onclick="saveSettings()">שמור הגדרות</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    let state = { paths: [], originalPaths: [], tree: null, flat: [], theme: 0, favorites: new Set(), indexInterval: null };
+
+    // החזרת פעימת החיים! השרת לא יקרוס יותר.
+    setInterval(() => { fetch('/heartbeat').catch(()=>{}); }, 2000);
+
+    window.onload = () => {
+        // כפיית מסך מלא ברמת JS גם כן למקרה שהדפדפן מתעלם מדגלים
+        try { window.moveTo(0, 0); window.resizeTo(screen.availWidth, screen.availHeight); } catch(e){}
+        fetch('/get_init').then(r=>r.json()).then(d => {
+            state.paths = d.paths; state.theme = d.theme_mode; setTheme(state.theme); loadFavorites(); checkLastBook();
+            fetch('/scan_start').then(() => pollScan());
+        }).catch(() => document.getElementById('loading').style.display = 'none');
+    };
+    function checkLastBook() {
+        const btn = document.getElementById('resume-btn');
+        if (localStorage.getItem('last_book_path')) {
+            btn.style.display = 'flex';
+        } else {
+            btn.innerText = 'לא נשמרה היסטוריית קריאה אחרונה';
+            btn.style.display = 'flex';
+            btn.style.cursor = 'default';
+            btn.style.background = 'var(--hover-bg)';
+            btn.style.color = 'var(--text-muted)';
+            btn.style.boxShadow = 'none';
+            btn.onclick = null;
+        }
+    }
+    function resumeReading() {
+        const lp = localStorage.getItem('last_book_path');
+        if (lp) openPdf(lp, 1, '', false);
+    }
+    function toggleReadingMode(enable) {
+        if (enable) { document.body.classList.add('reading-mode'); document.documentElement.requestFullscreen().catch(e=>console.log(e)); } 
+        else { document.exitFullscreen().catch(e=>console.log(e)); document.body.classList.remove('reading-mode'); }
+    }
+    document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement) document.body.classList.remove('reading-mode'); });
+
+    function refreshLibrary() {
+        document.getElementById('loading').style.display = 'flex';
+        document.getElementById('loading-text').innerText = "סורק נתונים, אנא המתן...";
+        fetch('/scan_start').then(() => pollScan());
+    }
+
+    function pollScan() {
+        fetch('/scan_status').then(r=>r.json()).then(s => {
+            document.getElementById('loading-text').innerText = `מעבד נתונים (${s.total_files} קבצים במסד הנתונים)...`;
+            if(s.done) { document.getElementById('loading').style.display = 'none'; loadTree(); }
+            else setTimeout(pollScan, 1500);
+        });
+    }
+
+    function loadTree() {
+        fetch('/get_tree').then(r=>r.json()).then(d => {
+            state.tree = d.tree || []; 
+            state.flat = d.flat || [];
+            document.getElementById('stats').innerText = state.flat.length + " ספרים";
+            renderTree();
+        });
+    }
+    function loadFavorites() { fetch('/fav_list').then(r=>r.json()).then(arr => { state.favorites = new Set(arr.map(x=>x.path)); }); }
+    function showFavorites() { fetch('/fav_list').then(r=>r.json()).then(arr => { renderList(arr, 'fav-list-content', 'fav-modal', true); }); }
+    function showHistory() { fetch('/get_history').then(r=>r.json()).then(arr => { renderList(arr, 'history-list-content', 'history-modal', false, true); }); }
+	function toggleFavorite(path, el, itemToRemove) {
+        path = decodeURIComponent(path);
+        fetch('/fav_toggle', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({path})}).then(r=>r.json()).then(res => {
+            if(res.added) { state.favorites.add(path); if(el) el.classList.add('active'); }
+            else { state.favorites.delete(path); if(el) el.classList.remove('active'); if(itemToRemove) itemToRemove.remove(); renderTree(); }
+        });
+    }
+    function renderList(arr, cid, mid, isFav, showRemove=false) {
+        const list = document.getElementById(cid); list.innerHTML = '';
+        if(!arr.length) { list.innerHTML = '<div style="text-align:center;padding:20px;">לא נוספו מועדפים</div>'; document.getElementById(mid).style.display = 'flex'; return; }        arr.forEach(f => {
+            const el = document.createElement('div'); el.className = 'tree-item';
+            const safePath = encodeURIComponent(f.path).replace(/'/g, "%27");
+            
+            let xBtn = isFav
+                ? `<button class="stop-btn" style="padding:2px 8px;" onclick="event.stopPropagation(); toggleFavorite('${safePath}', null, this.closest('.tree-item'))">✕</button>`
+                : (showRemove
+                    ? `<button class="stop-btn" style="padding:2px 8px;" onclick="event.stopPropagation(); removeHistory('${safePath}', this.closest('.tree-item'))">✕</button>`
+                    : '');
+		    el.innerHTML = `
+                <div style="display:flex; align-items:center; width:100%; gap: 10px; justify-content: space-between;">
+                    <div class="tree-item-content" style="flex:1;"><span>📄</span><span>${f.name}</span></div>
+                    ${xBtn}
+                </div>
+            `;
+			el.onclick = (e) => { 
+                if(!e.target.closest('button')) { openPdf(f.path); document.getElementById(mid).style.display='none'; } 
+            };
+            list.appendChild(el);
+        });
+        document.getElementById(mid).style.display = 'flex';
+    }
+
+    function renderTree() {
+        const cont = document.getElementById('tree'); cont.innerHTML = '';
+        const filter = document.getElementById('filter').value.toLowerCase();
+        
+        const sidebar = document.getElementById('sidebar');
+        if (filter && sidebar.classList.contains('collapsed')) {
+            sidebar.classList.remove('collapsed');
+        }
+
+        if (filter) {
+            state.flat.filter(f => f.n.toLowerCase().includes(filter)).forEach(f => {
+                const safePath = encodeURIComponent(f.p).replace(/'/g, "%27");
+                const isFav = state.favorites.has(f.p);
+                const el = document.createElement('div'); el.className = 'tree-item';
+                el.innerHTML = `
+                    <div class="tree-item-content"><span>📄</span><div class="tree-file-info"><span>${f.n}</span></div></div>
+                    <svg class="tree-fav-icon ${isFav?'active':''}" onclick="event.stopPropagation(); toggleFavorite('${safePath}', this)" viewBox="0 0 24 24" width="18" height="18"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" fill="currentColor"/></svg>`;
+                el.onclick = (e) => { if(!e.target.closest('svg')) openPdf(f.p); }; 
+                cont.appendChild(el);
+            });
+        } else {
+            function draw(nodes, p) {
+                if(!nodes || nodes.length === 0) return;
+                
+                nodes.sort((a,b) => {
+                    if(a.type === 'folder' && b.type !== 'folder') return -1;
+                    if(a.type !== 'folder' && b.type === 'folder') return 1;
+                    return a.name.localeCompare(b.name);
+                });
+
+                nodes.forEach(child => {
+                    const row = document.createElement('div'); row.className = 'tree-item';
+                    if(child.type==='folder') {
+                        row.innerHTML = `<div class="tree-item-content"><span>📁</span><span style="font-weight:bold;">${child.name}</span></div>`;
+                        p.appendChild(row);
+                        const sub = document.createElement('div'); sub.className = 'folder-content'; p.appendChild(sub);
+                        draw(child.children, sub);
+                        row.onclick = (e) => { e.stopPropagation(); sub.style.display = sub.style.display==='block'?'none':'block'; };
+                    } else {
+                        const safePath = encodeURIComponent(child.path).replace(/'/g, "%27");
+                        const isFav = state.favorites.has(child.path);
+                        row.innerHTML = `<div class="tree-item-content"><span>📄</span><span>${child.name}</span></div>
+                            <svg class="tree-fav-icon ${isFav?'active':''}" onclick="event.stopPropagation(); toggleFavorite('${safePath}', this)" viewBox="0 0 24 24" width="18" height="18"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" fill="currentColor"/></svg>`;
+                        row.onclick = (e) => { if(!e.target.closest('svg')) openPdf(child.path); };
+                        p.appendChild(row);
+                    }
+                });
+            }
+            draw(state.tree, cont);
+        }
+    }
+
+    function openPdf(path, page=1, q='', closeSearch=true) {
+        if(closeSearch) toggleSearchModal(false);
+        document.getElementById('welcome').style.display = 'none';
+        
+        const fr = document.getElementById('frame');
+        fr.src = `/pdf?path=${encodeURIComponent(path)}&q=${encodeURIComponent(q)}#page=${page}`;
+        fr.style.display = 'block';
+        
+        fetch('/history_log', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({path})});
+        localStorage.setItem('last_book_path', path);
+    }
+
+    function toggleSearchModal(show) {
+        document.getElementById('search-modal').style.display = show ? 'flex' : 'none';
+        if(state.indexInterval) { clearInterval(state.indexInterval); state.indexInterval = null; }
+        if(show) {
+            setTimeout(()=>document.getElementById('query').focus(), 100);
+            fetch('/index_start');
+            state.indexInterval = setInterval(() => {
+                fetch('/index_status').then(r=>r.json()).then(s => {
+                    if(s.is_indexing) {
+                        document.getElementById('idx-status').style.display = 'flex';
+                        document.getElementById('idx-bar').style.width = ((s.processed/s.total_files)*100)+'%';
+                        document.getElementById('idx-msg').innerText = `מאנדקס עכשיו: ${s.current || 'מעבד'} (${s.processed}/${s.total_files})`;
+                    } else if(s.done) {
+                        document.getElementById('idx-status').style.display = 'none'; clearInterval(state.indexInterval);
+                    }
+                });
+            }, 400);
+        }
+    }
+function stopIndexing() {
+    document.getElementById('idx-msg').innerText = "עוצר תהליך...";
+const stopBtn = document.getElementById('idx-status').querySelector('button');
+    if(stopBtn) stopBtn.disabled = true;
+    if(state.indexInterval) { clearInterval(state.indexInterval); state.indexInterval = null; }
+    fetch('/index_stop').then(() => {
+        const check = setInterval(() => {
+            fetch('/index_status').then(r=>r.json()).then(s => {
+                if(!s.is_indexing) {
+                    clearInterval(check);
+                    document.getElementById('idx-status').style.display = 'none';
+                    if(stopBtn) stopBtn.disabled = false;
+                }
+            });
+        }, 500);
+    });
+}
+    function clearIndexes() {
+        if(!confirm("למחוק את כל נתוני החיפוש ולסרוק מחדש?")) return;
+        fetch('/clear_index');
+        toggleSettings(false);
+        alert("האינדקס נמחק. הוא ירוץ מחדש בפתיחת החיפוש.");
+    }
+
+    function doSearch() {
+        const q = document.getElementById('query').value.trim(); if(q.length<2) return;
+        document.getElementById('results').innerHTML = '<div style="text-align:center; padding:40px; font-size:1.2rem; font-weight:bold; color:var(--accent);">מחפש... נא להמתין</div>';
+        
+        fetch(`/search?q=${encodeURIComponent(q)}`).then(r=>r.json()).then(arr => {
+            const out = document.getElementById('results'); out.innerHTML = '';
+            document.getElementById('results-count').innerText = arr.length > 0 ? `${arr.length} תוצאות` : '';
+            
+            if(!arr.length) { out.innerHTML = '<div style="text-align:center; padding:40px; opacity:0.6; font-size:1.2rem;">לא נמצאו תוצאות. נסה מילה אחרת.</div>'; return; }
+
+            const books = {};
+            arr.forEach(i => { if(!books[i.name]) books[i.name] = {c:0, id:'res-'+Math.random().toString(36).substr(2,6)}; books[i.name].c++; i.uid = books[i.name].id; });
+            const flt = document.getElementById('book-filters'); flt.innerHTML=''; flt.style.display='flex';
+            Object.keys(books).forEach(b => {
+                const t = document.createElement('div'); t.className='book-tag'; t.innerHTML=`<span>${books[b].c}</span> ${b}`;
+                t.onclick = () => document.getElementById(books[b].id)?.scrollIntoView({behavior:"smooth", block:"center"});
+                flt.appendChild(t);
+            });
+
+            const seen = new Set();
+            arr.forEach(itm => {
+                const card = document.createElement('div'); card.className = 'result-card';
+                if(!seen.has(itm.name)) { card.id = itm.uid; seen.add(itm.name); }
+                const safePath = encodeURIComponent(itm.path).replace(/'/g, "%27");
+card.innerHTML = `
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                        <div style="font-weight:bold; color:var(--accent); font-size:1.1rem; flex:1;">${itm.name}</div>
+                        <div style="font-weight:bold; background:var(--hover-bg); padding:4px 10px; border-radius:15px; border:1px solid var(--border);">עמוד ${itm.page}</div>
+                    </div>
+                    <div class="folder-path">📁 ${itm.folder}</div>
+                    <div class="snippet">${itm.snippet.replace(/<MARK>/g, '<mark>').replace(/<\/MARK>/g, '</mark>')}</div>
+                    <div class="preview-box"></div>`;
+                card.ondblclick = (e) => {
+                    e.stopPropagation();
+                    openPdf(decodeURIComponent(safePath), itm.page, q, true);
+                };
+                card.onclick = (e) => {
+                    if(e.target.tagName === 'IFRAME') return;
+                    const isExp = card.classList.contains('expanded');
+                    document.querySelectorAll('.result-card').forEach(c=>c.classList.remove('expanded'));
+                    if(!isExp) { 
+                        card.classList.add('expanded');
+                        const pUrl = `/preview_page?path=${safePath}&page=${itm.page}&q=${encodeURIComponent(q)}#toolbar=0`;
+                        card.querySelector('.preview-box').innerHTML = `<iframe src="${pUrl}"></iframe>`; 
+                    }
+                };
+                out.appendChild(card);
+             });
+        }).catch(err => {
+            document.getElementById('results').innerHTML = '<div style="text-align:center; padding:40px; color:red; font-size:1.2rem; font-weight:bold;">שגיאה בחיבור לשרת החיפוש.</div>';
+        });
+    }
+    function toggleSettings(show) { 
+        document.getElementById('settings-modal').style.display = show ? 'flex' : 'none'; 
+        if(show) { state.originalPaths = [...state.paths]; renderPaths(); }
+    }
+
+    function renderPaths() {
+        const ul = document.getElementById('paths'); ul.innerHTML = '';
+        state.paths.forEach(p => {
+            const li = document.createElement('li'); li.style.display='flex'; li.style.justifyContent='space-between'; li.style.padding='10px'; li.style.borderBottom='1px solid var(--border)';
+            li.innerHTML = `<span dir="ltr">${p}</span><span style="color:red;cursor:pointer;font-weight:bold;" onclick="state.paths=state.paths.filter(x=>x!=='${p}');renderPaths()">✕</span>`;
+            ul.appendChild(li);
+        });
+    }
+    
+    function addPath() { fetch('/browse').then(r=>r.json()).then(d => { if(d.status==='ok' && !state.paths.includes(d.path)) { state.paths.push(d.path); renderPaths(); } }); }
+    function saveSettings() {
+        fetch('/save_prefs', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({theme_mode: state.theme})});
+        if (JSON.stringify(state.paths) !== JSON.stringify(state.originalPaths)) {
+            fetch('/update_paths', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({paths: state.paths})})
+            .then(() => { toggleSettings(false); refreshLibrary(); });
+        } else toggleSettings(false);
+    }
+    function setTheme(m) { state.theme=m; document.body.className=''; if(m===1) document.body.classList.add('theme-1'); if(m===2) document.body.classList.add('theme-2'); }
+    function toggleSidebar() { document.getElementById('sidebar').classList.toggle('collapsed'); }
+    function removeHistory(safePath, el) {
+        const path = decodeURIComponent(safePath);
+        fetch('/history_remove', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({path})})
+        .then(() => { if(el) el.remove(); });
+    }
+// מנגנון לשמירת השרת פעיל כל עוד הדף פתוח
+setInterval(() => {
+    fetch('/heartbeat')
+        .then(r => r.json())
+        .catch(e => console.error("Heartbeat error:", e));
+}, 2000); // שולח דופק כל 2 שניות
+function resetResults() {
+    if(!document.getElementById('query').value) {
+        document.getElementById('results').innerHTML = '<div style="text-align:center;padding:40px;opacity:0.5;">התוצאות יופיעו כאן...</div>';
+        document.getElementById('results-count').innerText = '';
+        document.getElementById('book-filters').style.display = 'none';
+    }
+}
+</script>
+</body>
+</html>
